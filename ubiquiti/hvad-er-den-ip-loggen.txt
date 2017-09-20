@@ -1,0 +1,23 @@
+$ show ip multicast mfc
+Group           Origin           In          Out                Pkts         Bytes  Wrong
+233.138.48.139  212.178.184.120  eth0        eth2                 11       352.00b      0
+233.138.48.139  5.103.114.2      eth0        eth2                150        4.69KB      0
+233.138.48.207  88.83.72.22      eth0        eth2              11768       15.08MB      0
+233.138.48.139  88.83.72.21      eth0        eth2             215498      276.21MB      0
+
+multicast adresser
+212.178.184.120
+5.103.114.2
+88.83.72.22
+88.83.72.21
+
+
+hvad er ip fra packet capture
+
+ip 192.168.12.38 tv boks
+ip 88.83.68.3 ntp server
+ip 88.83.68.98 syslog server
+
+11:54:10.216015	IP 192.168.12.38.123 > 88.83.68.3.123: NTPv4, Client, length 48
+
+11:54:30.155900	IP 192.168.12.38.50941 > 88.83.68.98.514: [|syslog]

@@ -1,0 +1,181 @@
+fhdk@ubnt:~$ show ip multicast mfc
+Group           Origin           In          Out                Pkts         Bytes  Wrong
+239.255.255.250 192.168.10.150   eth0        eth1                 23       736.00b     23
+239.255.255.250 192.168.10.150   eth0        eth2                 23       736.00b     23
+239.255.255.250 192.168.10.1     eth0        eth1                 76       34.72KB     30
+239.255.255.250 192.168.10.3     eth0        eth1                 88       29.37KB     88
+239.255.255.250 192.168.10.153   eth0        eth1                 12       384.00b     12
+239.255.255.250 192.168.10.152   eth0        eth1                483      174.94KB    483
+239.255.255.250 192.168.10.19    eth0        eth1                 15       480.00b     15
+239.255.255.250 192.168.10.2     eth0        eth1                 63       16.49KB     63
+233.138.48.39   5.103.114.2      eth0        eth2                 14       448.00b      0                     
+233.138.48.39   88.83.72.20      eth0        eth1            1025789        1.28GB  613808                    
+fhdk@ubnt:~$ 
+
+
+------------------------------------------------------------
+
+set protocols igmp-proxy interface eth0 alt-subnet 0.0.0.0/0
+set protocols igmp-proxy interface eth0 role upstream
+set protocols igmp-proxy interface eth0 threshold 1
+set protocols igmp-proxy interface eth2 alt-subnet 0.0.0.0/0
+set protocols igmp-proxy interface eth2 role downstream
+set protocols igmp-proxy interface eth2 threshold 1
+
+------------------------------------------------------------
+
+**************************************************************************************************************
+https://community.ubnt.com/t5/EdgeMAX/IPTV-IGMP-Multicast-Solution-for-Edgemax-Router/td-p/1253350
+
+It's been a long time since I got back to this issue with the Edge max router 
+and my IPTV service provider. Anyway,  just wanted to share my solution to the 
+IPTV/IGMP/Multicast issue. Anyway, my router is an ER8 currently on v1.6.0. 
+I was searching for a solution and went thru many posts, but all would basically 
+said you need to just have this basic IGMP-Proxy 
+(in this case my eth1 is the Internet & eth2 is the LAN)
+
+FH note (my router has Internet on eth0 an LAN1 on eth1)
+ 
+    igmp-proxy {
+        interface eth1 {
+            alt-subnet 0.0.0.0/0
+            role upstream
+            threshold 1
+        }
+        interface eth2 {
+            alt-subnet 0.0.0.0/0
+            role downstream
+            threshold 1
+ 
+But with that configuration, I still had freezing video issue within 15 to 30 sec.  Luckily I found an another thread that talked about adding source and destination in the firewall. See thread by user synackack Edgerouter Lite v1.6.0 multicast IPTV / simple setup
+ 
+Anyway,  Here is my setup. eth1 is my Internet and eth2 is my LAN (192.168.1.1/24).
+ 
+First setup the IGMP Proxy
+ 
+ubnt@ubnt# show protocols
+ igmp-proxy {
+     interface eth1 {
+         alt-subnet 0.0.0.0/0
+         role upstream
+         threshold 1
+     }
+     interface eth2 {
+         alt-subnet 0.0.0.0/0
+         role downstream
+         threshold 1
+     }
+ }
+ 
+ 
+Then save the config. after that show
+ 
+ubnt@ubnt:~$ show ip multicast mfc
+Group           Origin           In     Out           Pkts         Bytes  Wrong
+239.255.255.250 192.168.1.3      eth1   eth2           179       75.59KB    179
+239.255.255.250 192.168.1.3      eth1   eth3           179       75.59KB    179
+239.11.5.79     10.33.1.38       eth1   eth2        106949      139.80MB      0
+ 
+In my case, 192.168.1.3 is my STB (set top box).  239.11.5.79 is the TV channel IP coming from the provider's IP of 10.33.1.38.   So now I know what my source and destination IP range addresses the service provider is using. I need to add the IPs into my firewall.  So in the GUI of the edge router, you need to be under firewall policy tab. For simulation purpose I setup my router using the GUI setup wizard. So by default the router created 2 firewall policies WAN_IN & WAN_LOCAL.  So I added 2 more rulesets for each firewall policy (WAN_IN & WAN_LOCAL).  I added "Allow IPTV Multicast UDP" & "Allow IGMP" and put them in the first and second order of the policy. It's important to have them in the first and second order. If you have other ruleset before these 2, then you may have an issue. See picture
+ 
+Firewall Policy to add Multicast IP
+ 
+So in the CLI commad, my firewall policy would look like this:
+ 
+ubnt@ubnt# show firewall
+ all-ping enable
+ broadcast-ping disable
+ ipv6-receive-redirects disable
+ ipv6-src-route disable
+ ip-src-route disable
+ log-martians disable
+ modify balance {
+     rule 1 {
+         action modify
+         modify {
+             lb-group G
+         }
+     }
+ }
+ name WAN_IN {
+     default-action drop
+     description "WAN to internal"
+     rule 1 {
+         action accept
+         description "Allow IPTV Multicast UDP"
+         destination {
+             address 239.0.0.0/8
+         }
+         log disable
+         protocol udp
+         source {
+             address 10.0.0.0/8
+             group {
+             }
+         }
+     }
+     rule 2 {
+         action accept
+         description "Allow IGMP"
+         log disable
+         protocol igmp
+     }
+     rule 3 {
+         action accept
+         state {
+             established enable
+             related enable
+         }
+     }
+     rule 4 {
+         action drop
+         state {
+             invalid enable
+         }
+     }
+ }
+ name WAN_LOCAL {
+     default-action drop
+     description "WAN to router"
+     rule 1 {
+         action accept
+         description "Allow IPTV Multicast UDP"
+         destination {
+             address 239.0.0.0/8
+         }
+         log disable
+         protocol udp
+         source {
+             address 10.0.0.0/8
+             group {
+             }
+         }
+     }
+     rule 2 {
+         action accept
+         description "Allow IGMP"
+         log disable
+         protocol igmp
+     }
+     rule 3 {
+         action accept
+         state {
+             established enable
+             related enable
+         }
+     }
+     rule 4 {
+         action drop
+         state {
+             invalid enable
+         }
+     }
+ }
+ receive-redirects disable
+ send-redirects enable
+ source-validation disable
+ syn-cookies enable
+ 
+ 
+ 
+And that is it for me. So for other newbies like me who's searching on this type of issue, they can find this thread easily and can start with this basic help.  Thanks all for contributing your technical support.  Thanks synackack for giving me a hint.
